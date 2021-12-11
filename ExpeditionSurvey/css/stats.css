@@ -1,0 +1,26 @@
+body {
+    background-color: #32383e;
+    color: whitesmoke;
+}
+
+a:link {
+    color: white;
+}
+
+a:visited {
+    color: grey;
+}
+
+a:hover {
+    color: red;
+}
+
+table, th, td {
+    border: 1px solid white;
+    border-collapse: collapse;
+}
+
+th, td {
+    padding: 5px;
+    white-space: nowrap;
+}
