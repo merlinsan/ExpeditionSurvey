@@ -1,0 +1,1 @@
+        <p><a href='/'>[Home]</a><a href='/discovered/0'>[Not Discovered]</a><a href='/discovered/1'>[Discovered]</a></p>

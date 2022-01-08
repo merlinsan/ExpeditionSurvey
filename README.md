@@ -16,7 +16,9 @@ The ExpeditionSurvey folder should be copied to the EDMC plugin folder and shoul
 Plugin folder: C:\Users\\\<username>\AppData\Local\EDMarketConnector\plugins
 
 ### Bugs
-There aren't any obvious ones, but testing has only been done on my own system, so further testing is required.  Please feedback any issues on github and I will endeavour to resolve them.
+The 'AutoScan' scan does not appear to be given for systems you have previously visited.  Consequently no stars are discovered and added to the database.  I am working on a tool to backfill these using information extracted from EDSM instead.
+
+There aren't any other obvious ones, but testing has only been done on my own system, so further testing is required.  Please feedback any issues on github and I will endeavour to resolve them.
 
 To help with that, EDMC has the option to change the logging level in File->Settings->Configuration:Log Level.  If this is set to DEBUG, additional information will be stored in the log file which can help isolate the issue.
 
@@ -27,9 +29,11 @@ The plugin itself is only to gather exploration information and store it in the 
 
 In the ExpeditionSurvey folder there is a link called 'ExpeditionServer' which runs the following command in a new CMD window:
 ~~~
-C:\Windows\System32\cmd.exe /k python3 -m http.server --cgi -d .\ 8001
+C:\Windows\System32\cmd.exe /k python3 .\ExpeditionServer.py
 ~~~
-This will start the python web server on port 8001 and can be accessed through the browser at [http://127.0.0.1:8001/cgi-bin/stats.py](http://127.0.0.1:8001/cgi-bin/stats.py)
+This will start the python web server on port 8002 and can be accessed through the browser at [http://127.0.0.1:8002](http://127.0.0.1:8002/)
+
+The statistics pages are generated using the [Bottle](https://bottlepy.org/) HTML templating engine.
 
 The information available through the browser is limited at this time, but I will develop this further.  Based on the data being stored, see events below, if there is a specific requirement for any particular reporting, please raise it as an issue on github.
 

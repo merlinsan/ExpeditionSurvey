@@ -3,7 +3,6 @@
 
 import logging
 import os
-import requests
 import json
 import sqlite3
 from config import appname
@@ -26,8 +25,7 @@ if not logger.hasHandlers():
 cwd = os.path.dirname(__file__)
 dbfile = f"{cwd}\ExpeditionSurvey.db"
 
-logger.info(f"Current working directory {cwd}")
-logger.info(f"dbfile {dbfile}")
+logger.info(f"Current working directory {cwd}, dbfile {dbfile}")
 
 class This:
     # Holds modules global variables
@@ -49,21 +47,22 @@ class This:
         
         if self.dbopen:
             # the database may have been created if it did not exist, so create the tables if they do not exist.
-            sql_create_atmospherecomp	= "CREATE TABLE IF NOT EXISTS atmospherecomposition ( SystemAddress INTEGER, BodyID INTEGER, BodyName TEXT, name TEXT, percent REAL, PRIMARY KEY(SystemAddress, BodyID,name) )"
+            sql_create_atmospherecomp	= "CREATE TABLE IF NOT EXISTS atmospherecomposition ( SystemAddress INTEGER, BodyID INTEGER, BodyName TEXT, Name TEXT, Percent REAL, PRIMARY KEY(SystemAddress, BodyID,name) )"
             sql_create_bodies			= "CREATE TABLE IF NOT EXISTS bodies ( SystemAddress INTEGER, BodyID INTEGER, BodyName TEXT, DistanceFromArrivalLS REAL, TerraformState TEXT, PlanetClass TEXT, Atmosphere TEXT, Volcanism TEXT, MassEM REAL, Radius REAL, SurfaceGravity REAL, SurfaceTemperature REAL, SurfacePressure REAL, Landable INTEGER, WasDiscovered INTEGER, WasMapped INTEGER, Scanned INTEGER, PRIMARY KEY(SystemAddress,BodyID) )"
             sql_create_codexentries		= "CREATE TABLE IF NOT EXISTS codexentries ( EntryID INTEGER, Name TEXT, Category TEXT, SubCategory TEXT, IsNewEntry INTEGER, PRIMARY KEY(EntryID) )"
             sql_create_codexlocations	= "CREATE TABLE IF NOT EXISTS codexlocations ( EntryID INTEGER, SystemAddress INTEGER, Region TEXT, NearestDestination TEXT, PRIMARY KEY(SystemAddress,NearestDestination,EntryID) )"
             sql_create_codextraits		= "CREATE TABLE IF NOT EXISTS codextraits ( EntryID INTEGER, Trait TEXT, PRIMARY KEY(EntryID,Trait) )"
             sql_create_composition		= "CREATE TABLE IF NOT EXISTS composition ( SystemAddress INTEGER, BodyID INTEGER, BodyName TEXT, Name TEXT, Percent REAL, PRIMARY KEY(SystemAddress,BodyID,Name) )"
-            sql_create_dockings			= "CREATE TABLE IF NOT EXISTS dockings ( SystemAddress INTEGER, MarketID INTEGER, timestamp TEXT, StationName TEXT, PRIMARY KEY(SystemAddress,MarketID) )"
-            sql_create_jumps			= "CREATE TABLE IF NOT EXISTS jumps ( timestamp TEXT, SystemAddress INTEGER, JumpDist REAL, FuelUsed REAL )"
-            sql_create_landings			= "CREATE TABLE IF NOT EXISTS landings ( SystemAddress INTEGER, BodyID INTEGER, BodyName TEXT, Latitude REAL, Longitude REAL, timestamp TEXT )"
+            sql_create_dockings			= "CREATE TABLE IF NOT EXISTS dockings ( SystemAddress INTEGER, MarketID INTEGER, Timestamp TEXT, StationName TEXT, PRIMARY KEY(Timestamp) )"
+            sql_create_jumps			= "CREATE TABLE IF NOT EXISTS jumps ( Timestamp TEXT, SystemAddress INTEGER, JumpDist REAL, FuelUsed REAL )"
+            sql_create_landings			= "CREATE TABLE IF NOT EXISTS landings ( SystemAddress INTEGER, BodyID INTEGER, BodyName TEXT, Latitude REAL, Longitude REAL, Timestamp TEXT )"
             sql_create_materials		= "CREATE TABLE IF NOT EXISTS materials ( SystemAddress INTEGER, BodyID INTEGER, BodyName TEXT, Name TEXT, Percent REAL, PRIMARY KEY(SystemAddress,BodyID,Name) )"
             sql_create_rings			= "CREATE TABLE IF NOT EXISTS rings ( SystemAddress INTEGER, BodyID INTEGER, BodyName TEXT, Name TEXT, RingClass TEXT, MassMT REAL, InnerRad REAL, OuterRad REAL, WasDiscovered INTEGER, WasMapped INTEGER, ReserveLevel TEXT, PRIMARY KEY(SystemAddress,BodyID,Name) )"
             sql_create_screenshots		= "CREATE TABLE IF NOT EXISTS screenshots ( Filename TEXT, System TEXT, Body TEXT )"
+            sql_create_selldata		 	= "CREATE TABLE IF NOT EXISTS selldata ( Timestamp TEXT, BaseValue INTEGER, Bonus INTEGER )"
             sql_create_signals			= "CREATE TABLE IF NOT EXISTS signals ( SystemAddress INTEGER, BodyID INTEGER, BodyName TEXT, Type TEXT, Count INTEGER, PRIMARY KEY(SystemAddress,BodyID,Type) )"
             sql_create_stars			= "CREATE TABLE IF NOT EXISTS stars ( SystemAddress INTEGER, BodyID INTEGER, BodyName TEXT, DistanceFromArrivalLS REAL, StarType TEXT, Subclass INTEGER, StellarMass REAL, Radius REAL, AbsoluteMagnitude REAL, Age_MY INTEGER, SurfaceTemperature REAL, Luminosity TEXT, WasDiscovered INTEGER, WasMapped INTEGER, PRIMARY KEY(SystemAddress,BodyID) )"
-            sql_create_systems			= "CREATE TABLE IF NOT EXISTS systems ( SystemAddress INTEGER, StarSystem TEXT, StarPosX REAL, StarPosY REAL, StarPosZ REAL, PRIMARY KEY(SystemAddress) )"
+            sql_create_systems			= "CREATE TABLE IF NOT EXISTS systems ( SystemAddress INTEGER, StarSystem TEXT, StarPosX REAL, StarPosY REAL, StarPosZ REAL, BodyCount INTEGER, AutoScan INTEGER DEFAULT 0, PRIMARY KEY(SystemAddress) )"
 
             try:
                 self.cur.execute(sql_create_atmospherecomp)
@@ -78,6 +77,7 @@ class This:
                 self.cur.execute(sql_create_materials)
                 self.cur.execute(sql_create_rings)
                 self.cur.execute(sql_create_screenshots)
+                self.cur.execute(sql_create_selldata)
                 self.cur.execute(sql_create_signals)
                 self.cur.execute(sql_create_stars)
                 self.cur.execute(sql_create_systems)
@@ -103,15 +103,88 @@ def plugin_stop() -> None:
         this.conn.close()
 
 
+def store_system(SystemAddress: int, StarSystem: str, StarPosX: float, StarPosY: float, StarPosZ: float) -> None:
+    sql_query = "insert or ignore into systems (SystemAddress, StarSystem, StarPosX, StarPosY, StarPosZ, BodyCount) values (?,?,?,?,?,?)"
+
+    try:
+        # BodyCount will be updated after a FSS scan complete
+        this.cur.execute(sql_query, (SystemAddress, StarSystem, StarPosX, StarPosY, StarPosZ, 0))
+        this.conn.commit()
+        logger.debug(f"Added system {StarSystem}")
+    except sqlite3.Error as error:
+        this.conn.rollback()
+        logger.error(f"Failed adding system {error} ({SystemAddress}, {StarSystem}, {StarPosX}, {StarPosY}, {StarPosZ}, 0)")
+
+
+def store_jump(Timestamp: str, SystemAddress: int, JumpDist: float, FuelUsed: float) -> None:
+    sql_query = "insert into jumps (Timestamp, SystemAddress, JumpDist, FuelUsed) values (?,?,?,?)"
+
+    try:
+        this.cur.execute(sql_query, (Timestamp, SystemAddress, JumpDist, FuelUsed))
+        this.conn.commit()
+        logger.debug(f"Added jump to {SystemAddress}")
+    except sqlite3.Error as error:
+        this.conn.rollback()
+        logger.error(f"Failed adding jump {error} ({Timestamp}, {SystemAddress}, {JumpDist}, {FuelUsed})")
+
+
+def store_star(SystemAddress: int, BodyID: int, BodyName: str, DistanceFromArrivalLS: float, StarType: str, Subclass: int, StellarMass: float, Radius: float, AbsoluteMagnitude: float, Age_MY: int, SurfaceTemperature: float, Luminosity: str, WasDiscovered: int, WasMapped: int):
+    sql_query = "insert or ignore into stars (SystemAddress, BodyID, BodyName, DistanceFromArrivalLS, StarType, Subclass, StellarMass, Radius, AbsoluteMagnitude, Age_MY, SurfaceTemperature, Luminosity, WasDiscovered, WasMapped) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+
+    try:
+        this.cur.execute(sql_query, (SystemAddress, BodyID, BodyName, DistanceFromArrivalLS, StarType, Subclass, StellarMass, Radius, AbsoluteMagnitude, Age_MY, SurfaceTemperature, Luminosity, WasDiscovered, WasMapped))
+        this.conn.commit()
+        logger.debug(f"Added star {BodyName}")
+    except sqlite3.Error as error:
+        this.conn.rollback()
+        logger.error(f"Failed adding star. {error} ({SystemAddress}, {BodyID}, {BodyName}, {DistanceFromArrivalLS}, {StarType}, {Subclass}, {StellarMass}, {Radius}, {AbsoluteMagnitude}, {Age_MY}, {SurfaceTemperature}, {Luminosity}, {WasDiscovered}, 0)")
+        
+
+def store_ring(SystemAddress: int, BodyID: int, BodyName: str, ring: List, WasDiscovered: bool, WasMapped: bool, ReserveLevel: str) -> None:
+    sql_query = "insert or ignore into rings (SystemAddress, BodyID, BodyName, Name, RingClass, MassMT, InnerRad, OuterRad, WasDiscovered, WasMapped, ReserveLevel) values (?,?,?,?,?,?,?,?,?,?,?)"
+
+    Name			= ring['Name']
+    RingClass		= ring['RingClass'].replace('eRingClass_','')
+    MassMT			= ring['MassMT']
+    InnerRad		= ring['InnerRad'] / 1000 # convert to km
+    OuterRad		= ring['OuterRad'] / 1000 # convert to km
+
+    try:
+        this.cur.execute(sql_query, (SystemAddress, BodyID, BodyName, Name, RingClass, MassMT, InnerRad, OuterRad, WasDiscovered, WasMapped, ReserveLevel))
+        this.conn.commit()
+        logger.debug(f"Added ring {BodyName} {Name}")
+    except sqlite3.Error as error:
+        this.conn.rollback()
+        logger.error(f"Failed adding ring {error} ({SystemAddress}, {BodyID}, {BodyName}, {Name}, {RingClass}, {MassMT}, {InnerRad}, {OuterRad}, {WasDiscovered}, {WasMapped} {ReserveLevel})")
+
+
 def journal_entry(cmdr: str, is_beta: bool, system: str, station: str, entry: Mapping[str, Any], state: Mapping[str, Any]) -> None:
     # This function is called when a journal entry is made indicating a change in state.
     # Check for the database being open first
     if not this.dbopen:
         return
 
-    logger.debug(entry)
+    if entry['event'] not in ['Music', 'Loadout', 'Statistics', 'ReceiveText']: # ignore some noise
+        logger.debug(entry)
 
     # Check for relevant entries and process accordingly
+    if entry['event'] == 'Location' or entry['event'] == 'StartUp':
+        logger.debug("Checking Location")
+        # This is called to report the initial location of the player when starting EDMC
+        # Use it to check the current location is stored in the database, particularly useful when a new database has been created.
+        # It will not provide any information on bodies that would normally be done on a scan when jumping into a system.
+        try:
+            this.cur.execute("select Timestamp, SystemAddress from jumps order by Timestamp desc")
+            row = this.cur.fetchone() # last jumped to
+            if row == None or row[1] != entry['SystemAddress']: # either no jumps in database or the last jumped to system is not the same as that reported by Location
+                logger.debug("Unmatched Location or no jumps")
+                store_system(entry['SystemAddress'], entry['StarSystem'], entry['StarPos'][0], entry['StarPos'][1], entry['StarPos'][2])
+                store_jump(entry['timestamp'], entry['SystemAddress'], 0.0, 0.0)  # store a jump of zero length to initialise the current location
+            else:
+                logger.debug("Last jumped to system is the same as location")
+        except sqlite3.Error as error:
+            logger.debug(f"Error reading last jump {error}")
+
     if entry['event'] == 'FSDJump':
         # This is called when jumping to a new system.
         # Create an instance of this system if it does not already exist
@@ -123,38 +196,36 @@ def journal_entry(cmdr: str, is_beta: bool, system: str, station: str, entry: Ma
         #	StarPos			: array [x:real, y:real, z:real] (light years)
         #	JumpDist		: real (light years)
         #	FuelUsed		: real (tonnes)
-        timestamp		= entry['timestamp']
+
+        store_system(entry['SystemAddress'], entry['StarSystem'], entry['StarPos'][0], entry['StarPos'][1], entry['StarPos'][2])
+        store_jump(entry['timestamp'], entry['SystemAddress'], entry['JumpDist'], entry['FuelUsed'])
+
+    if entry['event'] == 'FSSDiscoveryScan':
+        # This is called after the completion of the Discovery Scanner and provides a count of all the bodies in the system.
+        # relevant keys :
+        #	SystemAddress			: int
+        #	BodyCount				: int
+
         SystemAddress	= entry['SystemAddress']
-        StarSystem		= entry['StarSystem']
-        StarPos			= entry['StarPos']
-        JumpDist		= entry['JumpDist']
-        FuelUsed		= entry['FuelUsed']
+        BodyCount		= entry['BodyCount']
 
-        sql_query = "insert or ignore into systems (SystemAddress, StarSystem, StarPosX,   StarPosY,   StarPosZ  ) values (?,?,?,?,?)"
-#		sql_data  =                                (SystemAddress, StarSystem, StarPos[0], StarPos[1], StarPos[2])
+        sql_query = 'update or ignore systems set BodyCount=? where SystemAddress=?'
+#		sql_data  =	( BodyCount, SystemAddress )
 
         try:
-            this.cur.execute(sql_query, (SystemAddress, StarSystem, StarPos[0], StarPos[1], StarPos[2]))
+            this.cur.execute(sql_query, (BodyCount, SystemAddress))
             this.conn.commit()
-            logger.debug(f"Added system {StarSystem}")
+            logger.debug(f"Updated body count for system {SystemAddress}")
         except sqlite3.Error as error:
             this.conn.rollback()
-            logger.error(f"Failed adding system {error} ({SystemAddress}, {StarSystem}, {StarPos[0]}, {StarPos[1]}, {StarPos[2]})")
-
-        sql_query = "insert into jumps (timestamp, SystemAddress, JumpDist, FuelUsed) values (?,?,?,?)"
-#		sql_data  =                    (timestamp, SystemAddress, JumpDist, FuelUsed)
-
-        try:
-            this.cur.execute(sql_query, (timestamp, SystemAddress, JumpDist, FuelUsed))
-            this.conn.commit()
-            logger.debug(f"Added jump to {StarSystem}")
-        except sqlite3.Error as error:
-            this.conn.rollback()
-            logger.error(f"Failed adding jump {error} ({timestamp}, {SystemAddress}, {JumpDist}, {FuelUsed})")
+            logger.error(f"Failed updating body count for system. {error} ({SystemAddress}, {BodyCount})")
 
     if entry['event'] == 'Scan':
         # This is called when scanning a body either automatically or through the FSS.
         # This may be 'AutoScan' when entering the system, or 'Detailed' when done through the FSS or on approach to the body.
+        # On some systems, there does not appear to be an AutoScan and the stars are not picked up.  Not sure if this is because I've been there before, or it is a populated system,
+        # so need to add some functionality to check for stars not being discovered and then add them from another source, e.g. EDSM using their API.  This is probably best after the
+        # FSSDiscoveryScan at which time all the stars should be identified.
         # relevant keys :
         #	timestamp				: text
         #	BodyName				: text
@@ -195,6 +266,11 @@ def journal_entry(cmdr: str, is_beta: bool, system: str, station: str, entry: Ma
         WasDiscovered			= entry['WasDiscovered']
         WasMapped				= entry['WasMapped']
 
+        if 'ScanType' in entry and entry['ScanType'] == 'AutoScan':
+            sql_query = "update systems set AutoScan = 1 where SystemAddress = ?"
+            this.cur.execute(sql_query, (entry['SystemAddress'],))
+            this.conn.commit()
+
         if 'StarType' in entry:
             StarType			= entry['StarType']
             Subclass			= entry['Subclass']
@@ -205,36 +281,11 @@ def journal_entry(cmdr: str, is_beta: bool, system: str, station: str, entry: Ma
             SurfaceTemperature	= entry['SurfaceTemperature']
             Luminosity			= entry['Luminosity']
 
-            sql_query = "insert or ignore into stars (SystemAddress, BodyID, BodyName, DistanceFromArrivalLS, StarType, Subclass, StellarMass, Radius, AbsoluteMagnitude, Age_MY, SurfaceTemperature, Luminosity, WasDiscovered, WasMapped) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
-#			sql_data  =                              (SystemAddress, BodyID, BodyName, DistanceFromArrivalLS, StarType, Subclass, StellarMass, Radius, AbsoluteMagnitude, Age_MY, SurfaceTemperature, Luminosity, WasDiscovered, WasMapped)
+            store_star(SystemAddress, BodyID, BodyName, DistanceFromArrivalLS, StarType, Subclass, StellarMass, Radius, AbsoluteMagnitude, Age_MY, SurfaceTemperature, Luminosity, WasDiscovered, WasMapped)
 
-            try:
-                this.cur.execute(sql_query, (SystemAddress, BodyID, BodyName, DistanceFromArrivalLS, StarType, Subclass, StellarMass, Radius, AbsoluteMagnitude, Age_MY, SurfaceTemperature, Luminosity, WasDiscovered, WasMapped))
-                this.conn.commit()
-                logger.debug(f"Added star {BodyName}")
-            except sqlite3.Error as error:
-                this.conn.rollback()
-                logger.error(f"Failed adding star. {error} ({SystemAddress}, {BodyID}, {BodyName}, {DistanceFromArrivalLS}, {StarType}, {Subclass}, {StellarMass}, {Radius}, {AbsoluteMagnitude}, {Age_MY}, {SurfaceTemperature}, {Luminosity}, {WasDiscovered}, {WasMapped})")
-            
-            if 'Rings' in entry: # rings around stars include belt clusters TODO check for ReserveLevel in these
-                sql_query = "insert or ignore into rings (SystemAddress, BodyID, BodyName, Name, RingClass, MassMT, InnerRad, OuterRad, WasDiscovered, WasMapped, ReserveLevel) values (?,?,?,?,?,?,?,?,?,?,?)"
-#				sql_data  =                              (SystemAddress, BodyID, BodyName, Name, RingClass, MassMT, InnerRad, OuterRad, WasDiscovered, WasMapped, 'Unknown')
-
+            if 'Rings' in entry:
                 for ring in entry['Rings']:
-                    Name		= ring['Name']
-                    RingClass	= ring['RingClass'].replace('eRingClass_','')
-                    MassMT		= ring['MassMT']
-                    InnerRad	= ring['InnerRad'] / 1000 # convert to km
-                    OuterRad	= ring['OuterRad'] / 1000 # convert to km
-
-                    try:
-                        this.cur.execute(sql_query, (SystemAddress, BodyID, BodyName, Name, RingClass, MassMT, InnerRad, OuterRad, WasDiscovered, WasMapped, 'Unknown'))
-                        this.conn.commit()
-                        logger.debug(f"Added Ring {BodyName} {Name}")
-                    except sqlite3.Error as error:
-                        this.conn.rollback()
-                        logger.error(f"Failed adding ring {error} ({SystemAddress}, {BodyID}, {BodyName}, {Name}, {RingClass}, {MassMT}, {InnerRad}, {OuterRad}, {WasDiscovered}, {WasMapped} 'Unknown')")
-
+                    store_ring(SystemAddress, BodyID, BodyName, ring, WasDiscovered, WasMapped, 'Unknown')
 
         elif 'PlanetClass' in entry:
             TerraformState		= entry['TerraformState'] if entry['TerraformState'] != "" else "Not Terraformable"
@@ -266,24 +317,9 @@ def journal_entry(cmdr: str, is_beta: bool, system: str, station: str, entry: Ma
                 logger.error(f"Failed adding body {error} ({SystemAddress}, {BodyID}, {BodyName}, {DistanceFromArrivalLS}, {TerraformState}, {PlanetClass}, {Atmosphere}, {Volcanism}, {MassEM}, {Radius}, {SurfaceGravity}, {SurfaceTemperature}, {SurfacePressure}, {Landable}, {WasDiscovered}, {WasMapped}, False)")
 
             if 'Rings' in entry :
-                sql_query = "insert or ignore into rings (SystemAddress, BodyID, BodyName, Name, RingClass, MassMT, InnerRad, OuterRad, WasDiscovered, WasMapped, ReserveLevel) values (?,?,?,?,?,?,?,?,?,?,?)"
-#				sql_data  =                              (SystemAddress, BodyID, BodyName, Name, RingClass, MassMT, InnerRad, OuterRad, WasDiscovered, WasMapped, ReserveLevel)
-
                 for ring in entry['Rings']:
-                    Name			= ring['Name']
-                    RingClass		= ring['RingClass'].replace('eRingClass_','')
-                    MassMT			= ring['MassMT']
-                    InnerRad		= ring['InnerRad'] / 1000 # convert to km
-                    OuterRad		= ring['OuterRad'] / 1000 # convert to km
-                    ReserveLevel	= entry['ReserveLevel'].replace('Resources','')
-
-                    try:
-                        this.cur.execute(sql_query, (SystemAddress, BodyID, BodyName, Name, RingClass, MassMT, InnerRad, OuterRad, WasDiscovered, WasMapped, ReserveLevel))
-                        this.conn.commit()
-                        logger.debug(f"Added ring {BodyName} {Name}")
-                    except sqlite3.Error as error:
-                        this.conn.rollback()
-                        logger.error(f"Failed adding ring {error} ({SystemAddress}, {BodyID}, {BodyName}, {Name}, {RingClass}, {MassMT}, {InnerRad}, {OuterRad}, {WasDiscovered}, {WasMapped} {ReserveLevel})")
+                    ReserveLevel = entry['ReserveLevel']
+                    store_ring(SystemAddress, BodyID, BodyName, ring, WasDiscovered, WasMapped, ReserveLevel)
 
             if 'Composition' in entry:
                 composition = entry['Composition']
@@ -319,7 +355,7 @@ def journal_entry(cmdr: str, is_beta: bool, system: str, station: str, entry: Ma
             if 'AtmosphereComposition' in entry:
                 sql_query = "insert or ignore into atmospherecomposition (SystemAddress, BodyID, BodyName, Name, Percent) values (?,?,?,?,?)"
 #				sql_data  =                                              (SystemAddress, BodyID, BodyName, Name, Percent)
-                # TODO create table in database and add to init section above
+
                 for composition in entry['AtmosphereComposition']:
                     Name    = composition['Name']
                     Percent = composition['Percent']
@@ -345,7 +381,7 @@ def journal_entry(cmdr: str, is_beta: bool, system: str, station: str, entry: Ma
         #	Body				: text
         #	BodyID				: integer
         #	PlayerControlled	: bool - false if recalled from SRV
-        timestamp		= entry['timestamp']
+        Timestamp		= entry['timestamp']
         SystemAddress	= entry['SystemAddress']
         BodyID			= entry['BodyID']
         BodyName		= entry['Body']
@@ -354,20 +390,19 @@ def journal_entry(cmdr: str, is_beta: bool, system: str, station: str, entry: Ma
             Latitude		= entry['Latitude']
             Longitude		= entry['Longitude']
 
-            sql_query = "insert into landings (SystemAddress, BodyID, BodyName, Latitude, Longitude, timestamp) values (?,?,?,?,?,?)"
-#			sql_data  =                       (SystemAddress, BodyID, BodyName, Latitude, Longitude, timestamp)
+            sql_query = "insert into landings (SystemAddress, BodyID, BodyName, Latitude, Longitude, Timestamp) values (?,?,?,?,?,?)"
+#			sql_data  =                       (SystemAddress, BodyID, BodyName, Latitude, Longitude, Timestamp)
 
             try:
-                this.cur.execute(sql_query, (SystemAddress, BodyID, BodyName, Latitude, Longitude, timestamp))
+                this.cur.execute(sql_query, (SystemAddress, BodyID, BodyName, Latitude, Longitude, Timestamp))
                 this.conn.commit()
-                logger.debug(f"Added landing ({SystemAddress}, {BodyID}, {BodyName}, {Latitude}, {Longitude}, {timestamp})")
+                logger.debug(f"Added landing ({SystemAddress}, {BodyID}, {BodyName}, {Latitude}, {Longitude}, {Timestamp})")
             except sqlite3.Error as error:
                 this.conn.rollback()
-                logger.error(f"Failed adding landing ({SystemAddress}, {BodyID}, {BodyName}, {Latitude}, {Longitude}, {timestamp})")
+                logger.error(f"Failed adding landing ({SystemAddress}, {BodyID}, {BodyName}, {Latitude}, {Longitude}, {Timestamp})")
 
     if entry['event'] == 'Docked':
         # This is called when docking on a landing pad.
-        logger.debug(f"Entry: {entry}\n")
         # Relevant keys :
         #	SystemAddress	: integer
         #	MarketID		: integer
@@ -376,19 +411,19 @@ def journal_entry(cmdr: str, is_beta: bool, system: str, station: str, entry: Ma
         #	StarSystem		: text
         SystemAddress	= entry['SystemAddress']
         MarketID		= entry['MarketID']
-        timestamp		= entry['timestamp']
+        Timestamp		= entry['timestamp']
         StationName		= entry['StationName']
 
-        sql_query = "insert into dockings (SystemAddress, MarketID, timestamp, StationName) values (?,?,?,?)"
-#		sql_data  =                       (SystemAddress, MarketID, timestamp, StationName)
+        sql_query = "insert into dockings (SystemAddress, MarketID, Timestamp, StationName) values (?,?,?,?)"
+#		sql_data  =                       (SystemAddress, MarketID, Timestamp, StationName)
 
         try:
-            this.cur.execute(sql_query, (SystemAddress, MarketID, timestamp, StationName))
-            this.conn.execute()
-            logger.debug(f"Added docking ({SystemAddress}, {MarketID}, {timestamp}, {StationName})")
+            this.cur.execute(sql_query, (SystemAddress, MarketID, Timestamp, StationName))
+            this.conn.commit()
+            logger.debug(f"Added docking ({SystemAddress}, {MarketID}, {Timestamp}, {StationName})")
         except sqlite3.Error as error:
             this.conn.rollback()
-            logger.error(f"Failed adding docking ({SystemAddress}, {MarketID}, {timestamp}, {StationName})")
+            logger.error(f"Failed adding docking {error} ({SystemAddress}, {MarketID}, {Timestamp}, {StationName})")
 
     if entry['event'] == 'Screenshot':
         logger.debug(entry)
@@ -516,3 +551,19 @@ def journal_entry(cmdr: str, is_beta: bool, system: str, station: str, entry: Ma
                     except sqlite3.Error as error:
                         this.conn.rollback()
                         logger.debug(f"Failed adding codex trait {error} ({EntryID}, {trait})")
+
+    if entry['event'] == 'MultiSellExplorationData' or entry['event'] == 'SellExplorationData':
+        Timestamp	= entry['timestamp']
+        BaseValue	= entry['BaseValue']
+        Bonus		= entry['Bonus']
+
+        sql_query = 'insert into selldata (Timestamp, BaseValue, Bonus) values (?,?,?)'
+#		sql_data  =						  (Timestamp, BaseValue, Bonus)
+
+        try:
+            this.cur.execute(sql_query, (Timestamp, BaseValue, Bonus))
+            this.conn.commit()
+            logger.debug(f"Added sell data ({BaseValue}, {Bonus})")
+        except sqlite3.Error as error:
+            this.conn.rollback()
+            logger.debug(f"Failed adding sell data {error} ({Timestamp}, {BaseValue}, {Bonus})")
