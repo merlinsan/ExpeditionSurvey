@@ -160,3 +160,12 @@ The filename path is \\\ED_Pictures\\\<Filename>
 ED_Pictures will be where pictures are stored for your platform.
 
 e.g. C:\Users\\\<username>\Pictures\Frontier Developments\Elite Dangerous
+
+#### ScanOrganic
+
+After scanning the third sample of an organic structure, this will be recorded and the following information is stored.
+
+- SystemAddress
+- BodyID
+- Genus
+- Species

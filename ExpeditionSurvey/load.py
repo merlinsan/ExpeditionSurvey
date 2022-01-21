@@ -54,6 +54,7 @@ class This:
             sql_create_codextraits		= "CREATE TABLE IF NOT EXISTS codextraits ( EntryID INTEGER, Trait TEXT, PRIMARY KEY(EntryID,Trait) )"
             sql_create_composition		= "CREATE TABLE IF NOT EXISTS composition ( SystemAddress INTEGER, BodyID INTEGER, BodyName TEXT, Name TEXT, Percent REAL, PRIMARY KEY(SystemAddress,BodyID,Name) )"
             sql_create_dockings			= "CREATE TABLE IF NOT EXISTS dockings ( SystemAddress INTEGER, MarketID INTEGER, Timestamp TEXT, StationName TEXT, PRIMARY KEY(Timestamp) )"
+            sql_create_exobiology       = "CREATE TABLE IF NOT EXISTS exobiology ( SystemAddress INTEGER, BodyID INTEGER, Genus TEXT, Species TEXT, PRIMARY KEY(SystemAddress, BodyID, Genus, Species) )"
             sql_create_jumps			= "CREATE TABLE IF NOT EXISTS jumps ( Timestamp TEXT, SystemAddress INTEGER, JumpDist REAL, FuelUsed REAL )"
             sql_create_landings			= "CREATE TABLE IF NOT EXISTS landings ( SystemAddress INTEGER, BodyID INTEGER, BodyName TEXT, Latitude REAL, Longitude REAL, Timestamp TEXT )"
             sql_create_materials		= "CREATE TABLE IF NOT EXISTS materials ( SystemAddress INTEGER, BodyID INTEGER, BodyName TEXT, Name TEXT, Percent REAL, PRIMARY KEY(SystemAddress,BodyID,Name) )"
@@ -72,6 +73,7 @@ class This:
                 self.cur.execute(sql_create_codextraits)
                 self.cur.execute(sql_create_composition)
                 self.cur.execute(sql_create_dockings)
+                self.cur.execute(sql_create_exobiology)
                 self.cur.execute(sql_create_jumps)
                 self.cur.execute(sql_create_landings)
                 self.cur.execute(sql_create_materials)
@@ -552,6 +554,23 @@ def journal_entry(cmdr: str, is_beta: bool, system: str, station: str, entry: Ma
                         this.conn.rollback()
                         logger.debug(f"Failed adding codex trait {error} ({EntryID}, {trait})")
 
+    if entry['event'] == 'ScanOrganic' and entry['ScanType'] == 'Analyse':
+        SystemAddress = entry['SystemAddress']
+        BodyID        = entry['Body']
+        Genus         = entry['Genus_Localised']
+        Species       = entry['Species_Localised']
+
+        sql_query = 'insert or ignore into exobiology (SystemAddress, BodyID, Genus, Species) values (?,?,?,?)'
+#       sql_data  =                                   (SystemAddress, BodyID, Genus, Species)
+
+        try:
+            this.cur.execute(sql_query, (SystemAddress, BodyID, Genus, Species))
+            this.conn.commit()
+            logger.debug(f"Added organic scan ({SystemAddress}, {BodyID}, {Genus}, {Species})")
+        except sqlite3.Error as error:
+            this.conn.rollback()
+            logger.debug(f"Failed adding organic scan {error} ({SystemAddress}, {BodyID}, {Genus}, {Species})")
+
     if entry['event'] == 'MultiSellExplorationData' or entry['event'] == 'SellExplorationData':
         Timestamp	= entry['timestamp']
         BaseValue	= entry['BaseValue']
@@ -567,3 +586,7 @@ def journal_entry(cmdr: str, is_beta: bool, system: str, station: str, entry: Ma
         except sqlite3.Error as error:
             this.conn.rollback()
             logger.debug(f"Failed adding sell data {error} ({Timestamp}, {BaseValue}, {Bonus})")
+
+# TODO
+#     if entry['event'] == 'SellOrganicData':
+

@@ -3,13 +3,9 @@ body {
     color: whitesmoke;
 }
 
-a:link {
+a:link, a:visited {
     color: white;
     text-decoration: none;
-}
-
-a:visited {
-    color: grey;
 }
 
 a:hover {
@@ -36,4 +32,20 @@ td.right {
 
 .noborder {
     border: None;
+}
+
+div {
+    margin: 10px;
+}
+
+div.right {
+    float: right;
+}
+
+div.left {
+    float: left;
+}
+
+div.none {
+    clear: both;
 }

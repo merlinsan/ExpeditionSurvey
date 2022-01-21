@@ -1,4 +1,7 @@
         <h4>Bodies</h4>
+%if len(bodies) == 0:
+        <p>No bodies</p>
+%else:
         <table>
             <th>System Address</th>
             <th>Body ID</th>
@@ -23,20 +26,23 @@
                 <td class='center'>{{row[1]}}</td>
                 <td><a href='/body/{{row[0]}}/{{row[1]}}'>{{row[2]}}</a></td>
                 <td class='right'>{{row[3]}}</td>
-%terraformable = 1 if row[4] == 'Terraformable' else 0
-                <td><a href='/terraformable/{{terraformable}}'>{{row[4]}}</a></td>
-                <td><a href='/planetclass/{{row[5]}}'>{{row[5]}}</a></td>
-                <td>{{row[6]}}</td>
-                <td>{{row[7]}}</td>
+                <td><a href='/planet/terraformable/{{row[4]}}'>{{row[4]}}</a></td>
+                <td><a href='/planet/class/{{row[5]}}'>{{row[5]}}</a></td>
+                <td><a href='/planet/atmosphere/{{row[6]}}'>{{row[6]}}</a></td>
+                <td><a href='/planet/volcanism/{{row[7]}}'>{{row[7]}}</a></td>
                 <td class='right'>{{row[8]}}</td>
                 <td class='right'>{{row[9]}}</td>
                 <td class='right'>{{row[10]}}</td>
                 <td class='right'>{{row[11]}}</td>
                 <td class='right'>{{row[12]}}</td>
-                <td class='center'>{{row[13]}}</td>
-                <td class='center'>{{row[14]}}</td>
-                <td class='center'>{{row[15]}}</td>
-                <td class='center'>{{row[16]}}</td>
+%landable = 'Yes' if row[13] == 1 else 'No'
+                <td class='center'><a href='/planet/landable/{{row[13]}}'>{{landable}}</a></td>
+%discovered = 'Yes' if row[14] == 1 else 'No'
+                <td class='center'><a href='/planet/discovered/{{row[14]}}'>{{discovered}}</a></td>
+%mapped = 'Yes' if row[15] == 1 else 'No'
+                <td class='center'><a href='/planet/mapped/{{row[15]}}'>{{mapped}}</a></td>
+%scanned ='Yes' if row[16] == 1 else 'No'
+                <td class='center'><a href='/planet/scanned/{{row[16]}}'>{{scanned}}</a></td>
             </tr>
 %end
         </table>

@@ -8,22 +8,6 @@
     <body>
         %include('menu.tpl')
         
-        <h4>Summary</h4>
-        <table>
-            <tr>
-                <td>Total Distance</td>
-                <td>{{distance}}</td>
-            </tr>
-            <tr>
-                <td>Total Fuel</td>
-                <td>{{fuel}}</td>
-            </tr>
-            <tr>
-                <td>Total Jumps</td>
-                <td>{{totaljumps}}</td>
-            </tr>
-        </table>
-
         <h4>Jumps</h4>
         <table>
             <tr>
